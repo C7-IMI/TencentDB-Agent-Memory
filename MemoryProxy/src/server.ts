@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { runOpenaiChatPipeline as handleChatCompletions } from "./pipeline/runners/openai-chat.js";
 import { runAnthropicPipeline as handleAnthropicMessages } from "./pipeline/runners/anthropic.js";
 import { runUtilityPipeline as handleAuxiliaryEndpoint } from "./pipeline/runners/utility.js";
+import { handleFilesPassthrough } from "./routes/files-passthrough.js";
 import { runDirectPipeline as handleDirectPassthrough } from "./pipeline/runners/direct.js";
 import { runCodexPipeline as handleCodexEndpoint } from "./pipeline/runners/codex.js";
 import { runWorkbuddyPipeline as handleWorkbuddyEndpoint } from "./pipeline/runners/workbuddy.js";
@@ -176,6 +177,12 @@ export function createApp(config: ProxyConfig): Hono {
   app.post("/v1/embeddings", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/v1/completions", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/v1/moderations", (c) => handleAuxiliaryEndpoint(c, config));
+  // Files API: raw multipart passthrough. Without this an upload hits the
+  // JSON catch-all and answers 400, which fails every request that carries a
+  // file-backed image.
+  app.post("/v1/files", (c) => handleFilesPassthrough(c, config));
+  app.get("/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
+  app.delete("/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
 
   // Agent-prefixed routes with spaceId — 客户端标准配置格式：
   //   CC:  ANTHROPIC_BASE_URL=http://<proxy>:8096/claude-code/<spaceId>
@@ -319,6 +326,10 @@ export function createApp(config: ProxyConfig): Hono {
   app.post("/dsh/:spaceId/v1/embeddings", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/dsh/:spaceId/v1/completions", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/dsh/:spaceId/v1/moderations", (c) => handleAuxiliaryEndpoint(c, config));
+  // DSH uploads to `${baseURL}/v1/files`, i.e. `/dsh/<spaceId>/v1/files`.
+  app.post("/dsh/:spaceId/v1/files", (c) => handleFilesPassthrough(c, config));
+  app.get("/dsh/:spaceId/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
+  app.delete("/dsh/:spaceId/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
 
   // dsh cost-guard / analyse marker 路由 —— 与 CC/CB/Codex 完全对称。
   // 参照 codex 注释:必须显式注册这四条 5 段路径,否则会 fall through 到 catch-all
@@ -364,6 +375,9 @@ export function createApp(config: ProxyConfig): Hono {
   app.post("/:agent/:spaceId/v1/embeddings", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/:agent/:spaceId/v1/completions", (c) => handleAuxiliaryEndpoint(c, config));
   app.post("/:agent/:spaceId/v1/moderations", (c) => handleAuxiliaryEndpoint(c, config));
+  app.post("/:agent/:spaceId/v1/files", (c) => handleFilesPassthrough(c, config));
+  app.get("/:agent/:spaceId/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
+  app.delete("/:agent/:spaceId/v1/files/:fileId", (c) => handleFilesPassthrough(c, config));
   // Chat completions catch — runner 内部按 URL agent 段派 codebuddy/dsh/opencode/pi
   app.post("/:agent/:spaceId/v1/chat/completions", (c) => handleChatCompletions(c, config));
 

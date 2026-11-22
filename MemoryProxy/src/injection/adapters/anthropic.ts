@@ -173,6 +173,11 @@ export class AnthropicAdapter implements ProtocolAdapter {
           metadata: {
             media_type: source?.media_type,
             source_type: source?.type,
+            // preserve-source-verbatim: an Anthropic image source may be a Files
+            // reference (`{ type: "file", file_id }`) rather than base64. Rebuilding
+            // it from type/media_type/data drops `file_id`, and the upstream then
+            // rejects the whole request with "missing field `file_id`".
+            source: source ? { ...source } : undefined,
           },
         };
       }
@@ -260,7 +265,13 @@ export class AnthropicAdapter implements ProtocolAdapter {
           signature: block.metadata?.signature ?? "",
         };
 
-      case "image":
+      case "image": {
+        // preserve-source-verbatim: emit the source that came in, so a Files
+        // reference survives the round trip.
+        const kept = block.metadata?.source as Record<string, unknown> | undefined;
+        if (kept && typeof kept === "object") {
+          return { type: "image", source: { ...kept } };
+        }
         return {
           type: "image",
           source: {
@@ -269,6 +280,7 @@ export class AnthropicAdapter implements ProtocolAdapter {
             data: block.content,
           },
         };
+      }
 
       default:
         // Custom/unknown → try to reconstruct from content
